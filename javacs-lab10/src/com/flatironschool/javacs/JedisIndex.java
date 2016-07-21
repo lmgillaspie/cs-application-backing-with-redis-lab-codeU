@@ -1,3 +1,7 @@
+/**
+ * Edited by Lindsey Gillaspie
+ */
+
 package com.flatironschool.javacs;
 
 import java.io.IOException;
@@ -67,8 +71,9 @@ public class JedisIndex {
 	 * @return Set of URLs.
 	 */
 	public Set<String> getURLs(String term) {
-        // FILL THIS IN!
-		return null;
+        // Completed this method
+		Set<String> set = jedis.smembers(urlSetKey(term));
+		return set;
 	}
 
     /**
@@ -78,20 +83,28 @@ public class JedisIndex {
 	 * @return Map from URL to count.
 	 */
 	public Map<String, Integer> getCounts(String term) {
-        // FILL THIS IN!
-		return null;
+        // Completed this method
+		Map<String, Integer> map = new HashMap<String, Integer>();
+		Set<String> links = getURLs(term);
+		for (String url: links) {
+			Integer count = getCount(url, term);
+			map.put(url, count);
+		}
+		return map;
 	}
 
     /**
 	 * Returns the number of times the given term appears at the given URL.
-	 * 
+	 * Helper method for getCounts()
 	 * @param url
 	 * @param term
 	 * @return
 	 */
 	public Integer getCount(String url, String term) {
-        // FILL THIS IN!
-		return null;
+        // Completed this method
+		String redisKey = termCounterKey(url);
+		String count = jedis.hget(redisKey, term);
+		return new Integer(count);
 	}
 
 
@@ -102,8 +115,46 @@ public class JedisIndex {
 	 * @param paragraphs  Collection of elements that should be indexed.
 	 */
 	public void indexPage(String url, Elements paragraphs) {
-        // FILL THIS IN!
+        // Completed this method
+		System.out.println("Indexing: " + url);
+
+		// Make new TermCounter 
+		TermCounter tc = new TermCounter(url);
+		// Count terms in paragraphs
+		tc.processElements(paragraphs);
+
+		// Push tc's contents to Redis
+		pushTermCounterToRedis(tc);
 	}
+
+
+	/**
+	 * Helper method that pushes the contents of the TermCounter to Redis.
+	 * 
+	 * Parameter: tc
+	 * Output: List of return values from Redis.
+	 */
+	public List<Object> pushTermCounterToRedis(TermCounter tc) {
+	     Transaction t = jedis.multi();
+
+	     String url = tc.getLabel();
+	     String hashName = termCounterKey(url);
+
+	     // Delete old hash if page already indexed
+	     t.del(hashName);
+
+	     // Add an entry in the termcounter and a new member of index
+	     // for each term
+	     for (String term: tc.keySet()) {
+	     	Integer count = tc.get(term);
+	     	t.hset(hashName, term, count.toString());
+	     	t.sadd(urlSetKey(term), url);
+	     }
+
+	     List<Object> result = t.exec();
+	     return result;
+	}
+
 
 	/**
 	 * Prints the contents of the index.
